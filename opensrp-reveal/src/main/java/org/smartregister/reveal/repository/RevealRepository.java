@@ -7,10 +7,12 @@ import net.sqlcipher.database.SQLiteDatabase;
 import org.apache.commons.lang3.StringUtils;
 import org.smartregister.AllConstants;
 import org.smartregister.configurableviews.repository.ConfigurableViewsRepository;
+import org.smartregister.domain.ClientRelationship;
 import org.smartregister.domain.db.EventClient;
 import org.smartregister.job.PullUniqueIdsServiceJob;
 import org.smartregister.repository.CampaignRepository;
 import org.smartregister.repository.ClientFormRepository;
+import org.smartregister.repository.ClientRelationshipRepository;
 import org.smartregister.repository.EventClientRepository;
 import org.smartregister.repository.LocationRepository;
 import org.smartregister.repository.ManifestRepository;
@@ -83,6 +85,7 @@ public class RevealRepository extends Repository {
         TaskRepository.createTable(database);
         LocationRepository.createTable(database);
         StructureRepository.createTable(database);
+        ClientRelationshipRepository.createTable(database);
 
         onUpgrade(database, 1, BuildConfig.DATABASE_VERSION);
     }
