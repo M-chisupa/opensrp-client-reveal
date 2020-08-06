@@ -19,6 +19,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -48,11 +49,14 @@ import org.apache.commons.lang3.StringUtils;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.smartregister.AllConstants.INTENT_KEY;
+import org.smartregister.AllConstants;
 import org.smartregister.commonregistry.CommonPersonObjectClient;
 import org.smartregister.domain.FetchStatus;
+import org.smartregister.domain.SyncProgress;
 import org.smartregister.domain.Task;
 import org.smartregister.family.util.DBConstants;
 import org.smartregister.family.util.Utils;
+import org.smartregister.receiver.SyncProgressBroadcastReceiver;
 import org.smartregister.receiver.SyncStatusBroadcastReceiver;
 import org.smartregister.reveal.BuildConfig;
 import org.smartregister.reveal.R;
@@ -76,8 +80,11 @@ import org.smartregister.reveal.util.Country;
 import org.smartregister.reveal.util.RevealJsonFormUtils;
 import org.smartregister.reveal.util.RevealMapHelper;
 
+import java.util.List;
+
 import io.ona.kujaku.callbacks.OnLocationComponentInitializedCallback;
 import io.ona.kujaku.layers.BoundaryLayer;
+import io.ona.kujaku.listeners.OnFeatureLongClickListener;
 import io.ona.kujaku.utils.Constants;
 import timber.log.Timber;
 
@@ -109,7 +116,7 @@ import static org.smartregister.reveal.util.Utils.getPixelsPerDPI;
  * Created by samuelgithengi on 11/20/18.
  */
 public class ListTasksActivity extends BaseMapActivity implements ListTaskContract.ListTaskView,
-        View.OnClickListener, SyncStatusBroadcastReceiver.SyncStatusListener, UserLocationView, OnLocationComponentInitializedCallback {
+        View.OnClickListener, SyncStatusBroadcastReceiver.SyncStatusListener, UserLocationView, OnLocationComponentInitializedCallback, SyncProgressBroadcastReceiver.SyncProgressListener {
 
     private ListTaskPresenter listTaskPresenter;
 
@@ -134,6 +141,8 @@ public class ListTasksActivity extends BaseMapActivity implements ListTaskContra
     private CardView irsVerificationCardView;
 
     private RefreshGeowidgetReceiver refreshGeowidgetReceiver = new RefreshGeowidgetReceiver();
+
+    private SyncProgressBroadcastReceiver syncProgressBroadcastReceiver = new SyncProgressBroadcastReceiver(this);
 
     private boolean hasRequestedLocation;
 
@@ -586,6 +595,14 @@ public class ListTasksActivity extends BaseMapActivity implements ListTaskContra
                     if (boundaryLayer == null) {
                         boundaryLayer = createBoundaryLayer(operationalArea);
                         kujakuMapView.addLayer(boundaryLayer);
+
+                        kujakuMapView.setOnFeatureLongClickListener(new OnFeatureLongClickListener() {
+                            @Override
+                            public void onFeatureLongClick(List<Feature> features) {
+                                listTaskPresenter.onFociBoundaryLongClicked();
+                            }
+                        }, boundaryLayer.getLayerIds());
+
                     } else {
                         boundaryLayer.updateFeatures(FeatureCollection.fromFeature(operationalArea));
                     }
@@ -752,6 +769,7 @@ public class ListTasksActivity extends BaseMapActivity implements ListTaskContra
         if (SyncStatusBroadcastReceiver.getInstance().isSyncing()) {
             syncProgressSnackbar.show();
         }
+        toggleProgressBarView(true);
     }
 
     @Override
@@ -775,6 +793,8 @@ public class ListTasksActivity extends BaseMapActivity implements ListTaskContra
         onSyncInProgress(fetchStatus);
         //Check sync status and Update UI to show sync status
         drawerView.checkSynced();
+        // revert to sync status view
+        toggleProgressBarView(false);
     }
 
     @Override
@@ -783,14 +803,22 @@ public class ListTasksActivity extends BaseMapActivity implements ListTaskContra
         SyncStatusBroadcastReceiver.getInstance().addSyncStatusListener(this);
         IntentFilter filter = new IntentFilter(STRUCTURE_TASK_SYNCED);
         LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(refreshGeowidgetReceiver, filter);
+        IntentFilter syncProgressFilter = new IntentFilter(AllConstants.SyncProgressConstants.ACTION_SYNC_PROGRESS);
+        LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(syncProgressBroadcastReceiver, syncProgressFilter);
         drawerView.onResume();
         listTaskPresenter.onResume();
+
+        if (SyncStatusBroadcastReceiver.getInstance().isSyncing()) {
+            syncProgressSnackbar.show();
+            toggleProgressBarView(true);
+        }
     }
 
     @Override
     public void onPause() {
         SyncStatusBroadcastReceiver.getInstance().removeSyncStatusListener(this);
         LocalBroadcastManager.getInstance(getApplicationContext()).unregisterReceiver(refreshGeowidgetReceiver);
+        LocalBroadcastManager.getInstance(getApplicationContext()).unregisterReceiver(syncProgressBroadcastReceiver);
         RevealApplication.getInstance().setMyLocationComponentEnabled(revealMapHelper.isMyLocationComponentActive(this, myLocationButton));
         super.onPause();
     }
@@ -849,6 +877,22 @@ public class ListTasksActivity extends BaseMapActivity implements ListTaskContra
     @Override
     public void setSearchPhrase(String searchPhrase) {
         searchView.setText(searchPhrase);
+    }
+
+    @Override
+    public void toggleProgressBarView(boolean syncing) {
+        drawerView.toggleProgressBarView(syncing);
+    }
+
+    @Override
+    public void onSyncProgress(SyncProgress syncProgress) {
+        int progress = syncProgress.getPercentageSynced();
+        String entity = syncProgress.getSyncEntity().toString();
+        ProgressBar syncProgressBar = findViewById(R.id.sync_progress_bar);
+        TextView syncProgressBarLabel = findViewById(R.id.sync_progress_bar_label);
+        String labelText = String.format(getResources().getString(R.string.progressBarLabel), entity, progress);
+        syncProgressBar.setProgress(progress);
+        syncProgressBarLabel.setText(labelText);
     }
 
     private class RefreshGeowidgetReceiver extends BroadcastReceiver {
