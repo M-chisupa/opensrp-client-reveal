@@ -2,8 +2,9 @@ package org.smartregister.reveal.presenter;
 
 import android.graphics.PointF;
 import android.graphics.RectF;
-import androidx.appcompat.app.AlertDialog;
 import android.widget.TextView;
+
+import androidx.appcompat.app.AlertDialog;
 
 import com.google.gson.JsonPrimitive;
 import com.mapbox.geojson.Feature;
@@ -29,6 +30,7 @@ import org.robolectric.shadows.ShadowAlertDialog;
 import org.smartregister.commonregistry.CommonPersonObjectClient;
 import org.smartregister.domain.Task;
 import org.smartregister.reveal.BaseUnitTest;
+import org.smartregister.reveal.BuildConfig;
 import org.smartregister.reveal.R;
 import org.smartregister.reveal.application.RevealApplication;
 import org.smartregister.reveal.contract.BaseDrawerContract;
@@ -44,6 +46,7 @@ import org.smartregister.reveal.util.Constants;
 import org.smartregister.reveal.util.Constants.Filter;
 import org.smartregister.reveal.util.Constants.Intervention;
 import org.smartregister.reveal.util.Constants.InterventionType;
+import org.smartregister.reveal.util.Country;
 import org.smartregister.reveal.util.PreferencesUtil;
 import org.smartregister.reveal.util.RevealJsonFormUtils;
 import org.smartregister.reveal.util.TestingUtils;
@@ -51,7 +54,6 @@ import org.smartregister.reveal.util.TestingUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.UUID;
 
 import static android.content.DialogInterface.BUTTON_NEGATIVE;
@@ -66,12 +68,15 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.smartregister.domain.LocationProperty.PropertyStatus.ACTIVE;
+import static org.smartregister.domain.LocationProperty.PropertyStatus.INACTIVE;
 import static org.smartregister.domain.Task.TaskStatus.IN_PROGRESS;
 import static org.smartregister.reveal.util.Constants.BusinessStatus.BEDNET_DISTRIBUTED;
 import static org.smartregister.reveal.util.Constants.BusinessStatus.COMPLETE;
 import static org.smartregister.reveal.util.Constants.BusinessStatus.NOT_ELIGIBLE;
 import static org.smartregister.reveal.util.Constants.BusinessStatus.NOT_SPRAYED;
 import static org.smartregister.reveal.util.Constants.BusinessStatus.NOT_VISITED;
+import static org.smartregister.reveal.util.Constants.BusinessStatus.SPRAYED;
 import static org.smartregister.reveal.util.Constants.Intervention.BLOOD_SCREENING;
 import static org.smartregister.reveal.util.Constants.Intervention.IRS;
 import static org.smartregister.reveal.util.Constants.Intervention.LARVAL_DIPPING;
@@ -80,6 +85,7 @@ import static org.smartregister.reveal.util.Constants.Intervention.PAOT;
 import static org.smartregister.reveal.util.Constants.Intervention.REGISTER_FAMILY;
 import static org.smartregister.reveal.util.Constants.Properties.FAMILY_MEMBER_NAMES;
 import static org.smartregister.reveal.util.Constants.Properties.FEATURE_SELECT_TASK_BUSINESS_STATUS;
+import static org.smartregister.reveal.util.Constants.Properties.LOCATION_STATUS;
 import static org.smartregister.reveal.util.Constants.Properties.STRUCTURE_NAME;
 import static org.smartregister.reveal.util.Constants.Properties.TASK_BUSINESS_STATUS;
 import static org.smartregister.reveal.util.Constants.Properties.TASK_CODE;
@@ -158,6 +164,7 @@ public class ListTaskPresenterTest extends BaseUnitTest {
         prefsUtil.setCurrentPlanId(planId);
         prefsUtil.setCurrentOperationalArea(operationalArea);
         when(listTaskView.getContext()).thenReturn(RuntimeEnvironment.application);
+        Whitebox.setInternalState(BuildConfig.class, BuildConfig.BUILD_COUNTRY, Country.THAILAND);
     }
 
     @Test
@@ -266,7 +273,7 @@ public class ListTaskPresenterTest extends BaseUnitTest {
 
     @Test
     public void setTaskFilterParams() {
-        TaskFilterParams params = new TaskFilterParams("Doe");
+        TaskFilterParams params = TaskFilterParams.builder().searchPhrase("Doe").build();
         listTaskPresenter.setTaskFilterParams(params);
         verify(listTaskView).setSearchPhrase(params.getSearchPhrase());
     }
@@ -311,7 +318,7 @@ public class ListTaskPresenterTest extends BaseUnitTest {
 
     @Test
     public void testFilterTasksWithNullParams() {
-        listTaskPresenter.filterTasks(new TaskFilterParams(""));
+        listTaskPresenter.filterTasks(TaskFilterParams.builder().searchPhrase("").build());
         verify(listTaskView).setNumberOfFilters(0);
         assertFalse(Whitebox.getInternalState(listTaskPresenter, "isTasksFiltered"));
     }
@@ -319,7 +326,7 @@ public class ListTaskPresenterTest extends BaseUnitTest {
     @Test
     public void testFilterTasksBusinessStatus() {
         Feature structure = TestingUtils.getStructure();
-        TaskFilterParams params = new TaskFilterParams("", new HashMap<>());
+        TaskFilterParams params = TaskFilterParams.builder().searchPhrase("").build();
         params.getCheckedFilters().put(Filter.STATUS, Collections.singleton(NOT_VISITED));
         Whitebox.setInternalState(listTaskPresenter, "featureCollection", FeatureCollection.fromFeature(structure));
         //match is filter for business status works no feature is returned
@@ -342,7 +349,7 @@ public class ListTaskPresenterTest extends BaseUnitTest {
     @Test
     public void testFilterWithAllFilters() {
         Feature structure = TestingUtils.getStructure();
-        TaskFilterParams params = new TaskFilterParams("", new HashMap<>());
+        TaskFilterParams params = TaskFilterParams.builder().searchPhrase("").build();
         params.getCheckedFilters().put(Filter.STATUS, Collections.singleton(NOT_VISITED));
         params.getCheckedFilters().put(Filter.CODE, Collections.singleton(Intervention.IRS));
         Whitebox.setInternalState(listTaskPresenter, "featureCollection", FeatureCollection.fromFeature(structure));
@@ -525,6 +532,7 @@ public class ListTaskPresenterTest extends BaseUnitTest {
 
         assertFalse(Whitebox.getInternalState(listTaskPresenter, "markStructureIneligibleConfirmed"));
         assertEquals("eligible", Whitebox.getInternalState(listTaskPresenter, "reasonUnEligible"));
+        listTaskPresenter = spy(listTaskPresenter);
         listTaskPresenter.displayMarkStructureIneligibleDialog();
 
         AlertDialog alertDialog = (AlertDialog) ShadowAlertDialog.getLatestDialog();
@@ -536,7 +544,9 @@ public class ListTaskPresenterTest extends BaseUnitTest {
         alertDialog.getButton(BUTTON_NEGATIVE).performClick();
         assertFalse(alertDialog.isShowing());
 
-        assertTrue(Whitebox.getInternalState(listTaskPresenter, "markStructureIneligibleConfirmed"));
+        verify(listTaskPresenter).onMarkStructureIneligibleConfirmed();
+
+        assertFalse(Whitebox.getInternalState(listTaskPresenter, "markStructureIneligibleConfirmed"));
         assertEquals(listTaskView.getContext().getString(R.string.not_eligible_unoccupied),
                 Whitebox.getInternalState(listTaskPresenter, "reasonUnEligible"));
 
@@ -571,7 +581,7 @@ public class ListTaskPresenterTest extends BaseUnitTest {
     }
 
     @Test
-    public void testOnFormSaved() throws Exception{
+    public void testOnFormSaved() throws Exception {
         String structureId = "id1";
         String taskId = "taskId";
 
@@ -843,6 +853,50 @@ public class ListTaskPresenterTest extends BaseUnitTest {
         verify(listTaskInteractor).fetchInterventionDetails(PAOT, "id1", true);
     }
 
+    @Test
+    public void testOnFeatureSelectedByLongClickWhenStructureIsInactive() throws Exception {
+
+        Feature feature = initTestFeature("id1");
+        feature.addStringProperty(LOCATION_STATUS, INACTIVE.name());
+
+        Whitebox.invokeMethod(listTaskPresenter, "onFeatureSelectedByLongClick", feature);
+        verify(listTaskView).displayToast(R.string.structure_is_inactive);
+    }
+
+    @Test
+    public void testOnFeatureSelectedByLongClickWhenStructureHasNoTask() throws Exception {
+
+        Feature feature = initTestFeature("id1");
+        feature.addStringProperty(LOCATION_STATUS, ACTIVE.name());
+        feature.removeProperty(TASK_IDENTIFIER);
+
+        Whitebox.invokeMethod(listTaskPresenter, "onFeatureSelectedByLongClick", feature);
+        verify(listTaskView).displayMarkStructureInactiveDialog();
+    }
+
+    @Test
+    public void testOnFeatureSelectedByLongClickWhenTaskBusinessStatusIsNotVisited() throws Exception {
+
+        Feature feature = initTestFeature("id1");
+        feature.addStringProperty(LOCATION_STATUS, ACTIVE.name());
+        feature.addStringProperty(TASK_BUSINESS_STATUS, NOT_VISITED);
+        feature.addStringProperty(TASK_IDENTIFIER, "task-1");
+
+        Whitebox.invokeMethod(listTaskPresenter, "onFeatureSelectedByLongClick", feature);
+        verify(listTaskView).displayMarkStructureInactiveDialog();
+    }
+
+    @Test
+    public void testOnFeatureSelectedByLongClickWhenTaskHasBeenCompleted() throws Exception {
+
+        Feature feature = initTestFeature("id1");
+        feature.addStringProperty(LOCATION_STATUS, ACTIVE.name());
+        feature.addStringProperty(TASK_BUSINESS_STATUS, SPRAYED);
+        feature.addStringProperty(TASK_IDENTIFIER, "task-1");
+
+        Whitebox.invokeMethod(listTaskPresenter, "onFeatureSelectedByLongClick", feature);
+        verify(listTaskView).displayToast(R.string.cannot_make_structure_inactive);
+    }
 
     private Feature initTestFeature(String identifier) throws JSONException {
         String structureId = identifier;

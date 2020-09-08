@@ -26,6 +26,7 @@ import org.smartregister.repository.UniqueIdRepository;
 import org.smartregister.reveal.BuildConfig;
 import org.smartregister.reveal.application.RevealApplication;
 import org.smartregister.reveal.sync.RevealClientProcessor;
+import org.smartregister.reveal.util.Constants;
 import org.smartregister.reveal.util.Constants.DatabaseKeys;
 import org.smartregister.reveal.util.Country;
 import org.smartregister.reveal.util.FamilyConstants.EventType;
@@ -57,6 +58,7 @@ import static org.smartregister.reveal.util.Constants.MOSQUITO_COLLECTION_EVENT;
 import static org.smartregister.reveal.util.Constants.SPRAY_EVENT;
 import static org.smartregister.reveal.util.Constants.STRUCTURE;
 import static org.smartregister.reveal.util.Constants.StructureType.RESIDENTIAL;
+import static org.smartregister.reveal.util.Constants.Tables.EVENT_TABLE;
 import static org.smartregister.reveal.util.Constants.Tables.LARVAL_DIPPINGS_TABLE;
 import static org.smartregister.reveal.util.Constants.Tables.MOSQUITO_COLLECTIONS_TABLE;
 import static org.smartregister.reveal.util.Constants.Tables.PAOT_TABLE;
@@ -223,9 +225,23 @@ public class RevealRepository extends Repository {
     }
 
     private void upgradeToVersion8(SQLiteDatabase db) {
+        // replace whitespaces with underscores in event type field
+        db.execSQL(String.format("UPDATE %s set %s = REPLACE(%s, ' ', '_') ", EVENT_TABLE, DatabaseKeys.EVENT_TYPE_FIELD, DatabaseKeys.EVENT_TYPE_FIELD));
+
         if (!ManifestRepository.isVersionColumnExist(db)) {
             ManifestRepository.addVersionColumn(db);
         }
+
+        DatabaseMigrationUtils.createAddedECTables(db,
+                new HashSet<>(Arrays.asList(Constants.EventsRegister.TABLE_NAME)),
+                RevealApplication.createCommonFtsObject());
+
+        EventClientRepository.createTable(db,
+                EventClientRepository.Table.foreignEvent,
+                EventClientRepository.event_column.values());
+        EventClientRepository.createTable(db,
+                EventClientRepository.Table.foreignClient,
+                EventClientRepository.client_column.values());
     }
 
     private void upgradeToVersion9(SQLiteDatabase db) {

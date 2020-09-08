@@ -8,13 +8,13 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
-import org.smartregister.domain.Location;
-import org.smartregister.domain.LocationProperty.PropertyStatus;
-import org.smartregister.domain.Task;
 import org.smartregister.domain.Client;
 import org.smartregister.domain.Event;
-import org.smartregister.domain.db.EventClient;
+import org.smartregister.domain.Location;
+import org.smartregister.domain.LocationProperty.PropertyStatus;
 import org.smartregister.domain.Obs;
+import org.smartregister.domain.Task;
+import org.smartregister.domain.db.EventClient;
 import org.smartregister.domain.jsonmapping.ClientClassification;
 import org.smartregister.repository.BaseRepository;
 import org.smartregister.repository.EventClientRepository;
@@ -40,6 +40,8 @@ import static org.smartregister.reveal.util.Constants.BEDNET_DISTRIBUTION_EVENT;
 import static org.smartregister.reveal.util.Constants.BEHAVIOUR_CHANGE_COMMUNICATION;
 import static org.smartregister.reveal.util.Constants.CONFIGURATION.LOCAL_SYNC_DONE;
 import static org.smartregister.reveal.util.Constants.EventType.IRS_VERIFICATION;
+import static org.smartregister.reveal.util.Constants.EventType.PAOT_EVENT;
+import static org.smartregister.reveal.util.Constants.EventType.SUMMARY_EVENT_TYPES;
 import static org.smartregister.reveal.util.Constants.LARVAL_DIPPING_EVENT;
 import static org.smartregister.reveal.util.Constants.MOSQUITO_COLLECTION_EVENT;
 import static org.smartregister.reveal.util.Constants.Properties.LOCATION_PARENT;
@@ -118,10 +120,12 @@ public class RevealClientProcessor extends ClientProcessorForJava {
                     operationalAreaId = processRegisterStructureEvent(event, clientClassification);
                 } else if (eventType.equals(UPDATE_FAMILY_REGISTRATION)) {
                     processUpdateFamilyRegistrationEvent(event, eventClient.getClient(), clientClassification, localEvents);
-                } else if (eventType.equals(Constants.EventType.PAOT_EVENT)) {
+                } else if (eventType.equals(PAOT_EVENT)) {
                     operationalAreaId = processEvent(event, clientClassification, localEvents, JsonForm.PAOT_STATUS);
                 } else if (eventType.equals(TASK_RESET_EVENT)) {
                     continue;
+                } else if (SUMMARY_EVENT_TYPES.contains(event.getEventType())) {
+                    processSummaryFormEvent(event, clientClassification);
                 } else {
                     Client client = eventClient.getClient();
 
@@ -245,6 +249,14 @@ public class RevealClientProcessor extends ClientProcessorForJava {
             }
         }
         return operationalAreaId;
+    }
+
+    private void processSummaryFormEvent(Event event, ClientClassification clientClassification) {
+        try {
+            processEvent(event, new Client(event.getBaseEntityId()), clientClassification);
+        } catch (Exception e) {
+            Timber.e(e, "Error processing register structure event");
+        }
     }
 
     private String updateTask(Event event, boolean localEvents) {
